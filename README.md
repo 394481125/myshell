@@ -15,5 +15,7 @@ curl -sSL https://raw.githubusercontent.com/394481125/myshell/main/install_web_d
 ```
 
 ### 常用 Git 命令
-- **提交代码**：`git add . && git commit -m "update" && git push`
+- **提交代码**：
+```bash
+git add . && git commit -m "update" && git push
 ```
