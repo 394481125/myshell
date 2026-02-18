@@ -5,7 +5,7 @@ curl -sSL https://raw.githubusercontent.com/394481125/myshell/main/install_xrdp.
 '''
 
 '''
-curl -sSL https://raw.githubusercontent.com/394481125/myshell/main/install_xrdp2.sh | sudo bash
+curl -sSL https://raw.githubusercontent.com/394481125/myshell/main/install_web_desktop.sh | sudo bash
 '''
 
 提交：
