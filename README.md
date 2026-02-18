@@ -14,6 +14,12 @@ curl -sSL https://raw.githubusercontent.com/394481125/myshell/main/install_xrdp.
 curl -sSL https://raw.githubusercontent.com/394481125/myshell/main/install_web_desktop.sh | sudo bash
 ```
 
+### 一键查看系统信息
+> 适用场景：查看系统信息。
+```bash
+curl -sSL https://raw.githubusercontent.com/394481125/myshell/main/sysinfo.sh | sudo bash
+```
+
 ### 常用 Git 命令
 - **提交代码**：
 ```bash
