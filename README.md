@@ -26,6 +26,13 @@ curl -sSL https://raw.githubusercontent.com/394481125/myshell/main/check_info_pr
 curl -sSL https://raw.githubusercontent.com/394481125/myshell/main/check_logs_pretty.sh | sudo bash
 ```
 
+### 一键查看CPU&GPU详情
+> 适用场景：查看CPU&GPU详情。
+```bash
+curl -sSL https://raw.githubusercontent.com/394481125/myshell/main/check_core_pretty.sh | sudo bash
+```
+
+
 ### 常用 Git 命令
 - **提交代码**：
 ```bash
