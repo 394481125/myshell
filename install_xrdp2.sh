@@ -23,44 +23,41 @@ else
     echo "ResizeSession=true" >> /etc/xrdp/xrdp.ini
 fi
 
-echo "--- 3. 配置 XFCE 启动脚本 ---"
-# 备份并修改 startwm.sh
+echo "--- 3. 配置防火墙 (开放 3389 端口) ---"
+if command -v ufw > /dev/null; then
+    ufw allow 3389/tcp
+    ufw reload
+    echo "防火墙规则已更新："
+    ufw status | grep 3389
+else
+    echo "未检测到 ufw 防火墙，跳过此步骤。"
+fi
+
+echo "--- 4. 配置 xRDP 启动脚本 ---"
+# 备份原始配置文件
 cp /etc/xrdp/startwm.sh /etc/xrdp/startwm.sh.bak
-# 注释掉默认的 Xsession 启动行
+
+# 使用 sed 注释掉原有的最后两行，并添加 startxfce4
+# 逻辑：匹配包含 Xsession 的行并在行首添加 #
 sed -i 's/^test -x \/etc\/X11\/Xsession \&\& exec \/etc\/X11\/Xsession/# &/' /etc/xrdp/startwm.sh
 sed -i 's/^exec \/bin\/sh \/etc\/X11\/Xsession/# &/' /etc/xrdp/startwm.sh
 
-# 确保启动的是 xfce4
+# 在文件末尾添加启动命令（如果不存在的话）
 if ! grep -q "startxfce4" /etc/xrdp/startwm.sh; then
     echo "startxfce4" >> /etc/xrdp/startwm.sh
 fi
 
-echo "--- 4. 解决 XFCE 锁屏与权限弹窗问题 (RDP 优化) ---"
-# 禁用某些在远程桌面下会导致黑屏或卡顿的特性（如电源管理）
-# 修复“需要身份验证才能创建色彩管理设备”的弹窗
-cat <<EOF > /etc/polkit-1/localauthority/50-local.d/45-allow-colord.pkla
-[Allow Colord all Users]
-Identity=unix-user:*
-Action=org.freedesktop.color-manager.create-device;org.freedesktop.color-manager.create-profile;org.freedesktop.color-manager.delete-device;org.freedesktop.color-manager.delete-profile;org.freedesktop.color-manager.modify-device;org.freedesktop.color-manager.modify-profile
-ResultAny=no
-ResultInactive=no
-ResultActive=yes
-EOF
-
-echo "--- 5. 设置防火墙与重启服务 ---"
-if command -v ufw > /dev/null; then
-    ufw allow 3389/tcp
-    ufw reload
-fi
-
+echo "--- 5. 重启 xRDP 并设置开机自启 ---"
 systemctl restart xrdp
 systemctl enable xrdp
 
+echo "--- 6. 检查服务状态 ---"
+systemctl status xrdp --no-pager
+
 echo "-------------------------------------------------------"
 echo "安装完成！"
-echo "【关键操作】为了让分辨率自适应，请在 Windows 远程桌面连接时："
-echo " 1. 点击 '显示选项' -> '显示' 选项卡。"
-echo " 2. 在 '显示配置' 中，将滑块拉到最右侧 (全屏)。"
-echo " 3. 勾选 '在所有监视器上使用我的所有显示器' (可选)。"
-echo " 4. 连接后，如果你调整远程窗口大小，Ubuntu 会自动适配。"
+echo "现在你可以使用 Windows 远程桌面连接 (RDP) 访问此服务器。"
+echo "服务器 IP: $(hostname -I | awk '{print $1}')"
+echo "端口: 3389"
+echo "提示：如果连接后出现黑屏，请确保已注销该用户的本地登录会话。"
 echo "-------------------------------------------------------"
