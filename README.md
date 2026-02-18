@@ -1,7 +1,12 @@
 # myshell
 
-
+'''
 curl -sSL https://raw.githubusercontent.com/394481125/myshell/main/install_xrdp.sh | sudo bash
+'''
+
+'''
+curl -sSL https://raw.githubusercontent.com/394481125/myshell/main/install_xrdp2.sh | sudo bash
+'''
 
 提交：
 git add .
