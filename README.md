@@ -17,7 +17,7 @@ curl -sSL https://raw.githubusercontent.com/394481125/myshell/main/install_web_d
 ### 一键查看系统信息
 > 适用场景：查看系统信息。
 ```bash
-curl -sSL https://raw.githubusercontent.com/394481125/myshell/main/check_info.sh | sudo bash
+curl -sSL https://raw.githubusercontent.com/394481125/myshell/main/check_info_pretty.sh | sudo bash
 ```
 
 ### 常用 Git 命令
