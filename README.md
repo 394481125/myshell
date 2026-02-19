@@ -14,6 +14,12 @@ curl -sSL https://raw.githubusercontent.com/394481125/myshell/main/install_xrdp.
 curl -sSL https://raw.githubusercontent.com/394481125/myshell/main/install_web_desktop.sh | sudo bash
 ```
 
+### 一键FRP服务端安装
+> 适用场景：通过内网穿透外网访问内网。
+```bash
+curl -sSL https://raw.githubusercontent.com/394481125/myshell/main/install_frp_server.sh | sudo bash
+```
+
 ### 一键查看系统信息
 > 适用场景：查看Ubuntu系统信息。
 ```bash
