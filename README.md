@@ -2,6 +2,12 @@
 
 Linux 服务一键配置工具。
 
+### 一键 交互式的 Swap (虚拟内存) 管理脚本
+> 适用场景： Swap 状态和内存使用情况增加虚拟内存。
+```bash
+curl -sSL https://raw.githubusercontent.com/394481125/myshell/main/add_swap.sh | sudo bash
+```
+
 ### 一键 xrdp 服务安装
 > 适用场景：Windows 自带远程桌面连接。
 ```bash
