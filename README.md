@@ -47,7 +47,7 @@ curl -sSL https://raw.githubusercontent.com/394481125/myshell/main/check_core_pr
 ### 一键查看谁在用GPU详情
 > 适用场景：一键查看谁在用GPU详情。
 ```bash
-curl -sSL https://raw.githubusercontent.com/394481125/myshell/main/gpu_monitor.sh | sudo bash
+curl -sSL https://raw.githubusercontent.com/394481125/myshell/main/check_gpu.sh | sudo bash
 ```
 
 
