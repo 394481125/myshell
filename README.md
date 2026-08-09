@@ -44,6 +44,12 @@ curl -sSL https://raw.githubusercontent.com/394481125/myshell/main/check_logs_pr
 curl -sSL https://raw.githubusercontent.com/394481125/myshell/main/check_core_pretty.sh | sudo bash
 ```
 
+### 一键查看谁在用GPU详情
+> 适用场景：一键查看谁在用GPU详情。
+```bash
+curl -sSL https://raw.githubusercontent.com/394481125/myshell/main/gpu_monitor.sh | sudo bash
+```
+
 
 ### 常用 Git 命令
 - **提交代码**：
