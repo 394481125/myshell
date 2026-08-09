@@ -2,8 +2,8 @@
 set +e
 clear
 echo "================================================================================"
-echo "   一站式虚拟环境创建｜CUDA自动适配｜PyTorch安装｜单/多卡GPU性能基准测试"
-echo "   指标包含：GFLOPS、吞吐、推理速度、训练速度、显存占用、设备信息"
+echo "   一站式虚拟环境创建｜CUDA自动适配｜PyTorch安装｜timm‑ResNet50 GPU基准测试"
+echo "   指标：GFLOPS、吞吐、推理速度、训练速度、显存占用、设备信息、多卡测速"
 echo "================================================================================"
 
 read -p "请输入你的项目虚拟环境名称：" env_name
@@ -51,12 +51,12 @@ else
 fi
 [[ $env_act_status -ne 1 ]] && echo "环境激活失败" && exit 1
 
-# pip 默认清华源
+# pip 清华源
 pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
 
-# 【修复】提前安装性能测试所需依赖，防止跳过torch安装缺少psutil
-echo -e "\n>>> 预安装GPU测速依赖 numpy psutil"
-pip install -q numpy psutil
+# 提前一次性装好所有测速依赖：numpy psutil timm
+echo -e "\n>>> 预安装测速依赖 numpy psutil timm"
+pip install -q numpy psutil timm
 
 install_torch_gpu(){
     declare -a opt_tag=()
@@ -69,7 +69,8 @@ install_torch_gpu(){
         return
     fi
 
-    cuda_version=$(nvidia-smi | grep -i "CUDA Version" | sed 's/[^0-9.]//g')
+    cuda_raw=$(nvidia-smi | grep -i "CUDA Version")
+    cuda_version=$(echo "$cuda_raw" | sed 's/[^0-9.]//g')
     major_ver=$(echo "$cuda_version" | cut -d '.' -f1)
     minor_ver=$(echo "$cuda_version" | cut -d '.' -f2)
     echo "✅ 显卡驱动最高支持 CUDA‑$cuda_version"
@@ -156,12 +157,12 @@ print(f\"cuDNN版本: {torch.backends.cudnn.version()}\")
 echo -e "\n>>>>>>>>>> 正在自动执行PyTorch‑GPU自检"
 eval "$CHECK_GPU_ALL"
 
-# -------------------------- GPU综合性能基准测试（单卡/多卡、GFLOPS、速度、显存、吞吐） --------------------------
+# -------------------------- GPU基准测试（timm加载resnet50，抛弃torch‑hub） --------------------------
 gpu_benchmark_test(){
 cat > /tmp/gpu_benchmark.py << 'EOF'
 import torch
 import time
-# psutil改为动态导入，缺失不会直接崩溃
+import timm
 try:
     import psutil
 except ImportError:
@@ -182,8 +183,10 @@ def get_gpu_info():
 
 def benchmark_single_card(device_id=0,batch=32,warm_up=10,test_loop=50):
     dev = torch.device(f"cuda:{device_id}")
+    # 标准输入
     x = torch.randn((batch,3,224,224),dtype=torch.float32,device=dev)
-    model = torch.hub.load('pytorch/vision:v0.18.0','resnet50',pretrained=False).to(dev)
+    # timm加载，无远程hub冲突
+    model = timm.create_model("resnet50",pretrained=False).to(dev)
     model.train()
 
     # 预热
@@ -210,7 +213,7 @@ def benchmark_single_card(device_id=0,batch=32,warm_up=10,test_loop=50):
         torch.cuda.synchronize(dev)
         infer_cost = (time.time()-t1)/test_loop
 
-    # GFLOPS resnet50 单张图约4.1GFlop
+    # ResNet50‑224 单样本 FLOPs ≈4.1 GFLOPs
     single_sample_flop = 4.1
     batch_flop = single_sample_flop * batch
     train_gflops = batch_flop / train_cost
@@ -237,7 +240,7 @@ def benchmark_multi_gpu():
         return
     from torch.nn import DataParallel
     batch = 64
-    model = torch.hub.load('pytorch/vision:v0.18.0','resnet50',pretrained=False).cuda()
+    model = timm.create_model("resnet50",pretrained=False).cuda()
     model = DataParallel(model)
     x = torch.randn((batch,3,224,224),dtype=torch.float32).cuda()
     model.train()
@@ -290,9 +293,9 @@ echo "2. 查看显卡数量：${CHECK_GPU_NUM}"
 echo "3. 读取显卡名称：${CHECK_GPU_NAME}"
 echo "4. 查看PyTorch内置CUDA版本：${CHECK_TORCH_CUDA}"
 echo "5. 查看cuDNN状态与版本：${CHECK_CUDNN}"
-echo "6. 一键完整GPU信息：${CHECK_GPU_ALL}"
+echo "6. 一键完整GPU硬件信息：${CHECK_GPU_ALL}"
 echo ""
 echo "👉 【GPU性能测试说明】"
-echo "• 测试网络：ResNet50 输入 3*224*224"
+echo "• 测试网络：timm‑ResNet50 输入尺寸 3*224*224"
 echo "• 输出指标：训练耗时、推理耗时、GFLOPS、每秒样本吞吐、显存占用、显卡算力、多卡并行速度"
 echo "================================================================================"
