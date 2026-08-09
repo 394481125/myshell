@@ -1,18 +1,11 @@
 #!/bin/bash
 #===============================================================================
-# 脚本名称：env_auto_install.sh
-# 问题修复：cu124源失效，更换官方可用下载地址
+# 修复：废弃老旧whl源，改用pytorch官方自动识别安装方式
 # 1.输入虚拟环境名称
-# 2.优先检测当前目录同名venv文件夹，存在直接激活
-# 3.未找到环境，手动选择 conda / venv 创建全新虚拟环境
-# 4.剔除nvidia‑smi输出的竖线特殊符号，正常读取CUDA版本
-# 5.只保留官方现存可用的Torch‑CUDA版本，最高cu121作为推荐
-# 6.requirements.txt自动过滤torch家族包，防止版本冲突
-# 使用方式：curl下载至/tmp临时目录运行，执行结束自动清理脚本
-# 注意事项：
-#   1.禁止sudo运行，虚拟环境会出现权限异常
-#   2.conda模式需要提前装好Miniconda / Anaconda
-#   3.venv需要系统安装 python3‑env
+# 2.优先读取本地venv文件夹，存在直接激活
+# 3.不存在则选择conda / venv新建环境
+# 4.读取CUDA版本、展示兼容版本，仅做提示，使用官方命令安装
+# 5.requirements.txt自动过滤torch包
 #===============================================================================
 
 set +e
@@ -22,7 +15,6 @@ echo "==========================================================================
 echo "   一站式虚拟环境创建｜可选GPU‑PyTorch版本｜第三方依赖安装脚本"
 echo "================================================================================"
 
-# --------------------------1.接收环境名称--------------------------------
 read -p "请输入你的项目虚拟环境名称：" env_name
 if [[ -z "${env_name}" ]];then
     echo "❌ 环境名称不能为空，脚本退出"
@@ -30,7 +22,7 @@ if [[ -z "${env_name}" ]];then
 fi
 env_act_status=0
 
-# --------------------------2.检测当前目录venv环境------------------------
+# 检测当前目录venv
 if [[ -d "./${env_name}" ]];then
     echo -e "\n✅ 在当前文件夹检测到venv环境：${env_name}"
     source ./${env_name}/bin/activate
@@ -82,60 +74,49 @@ if [[ ${env_act_status} -ne 1 ]];then
     exit 1
 fi
 
-# --------------------------3.读取CUDA、向下兼容版本选择（修复失效源）------------------------
+# PyTorch安装函数
 install_torch_gpu(){
     echo -e "\n>>>>>>>>>> 开始检测本机NVIDIA显卡驱动以及最高支持CUDA版本"
     if ! command -v nvidia-smi &> /dev/null;then
-        echo "⚠ 没有检测到nvidia‑smi，判定机器无NVIDIA独立显卡"
-        echo "▶ 直接安装CPU版本PyTorch"
-        pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+        echo "⚠ 没有检测到nvidia‑smi，判定机器无NVIDIA独立显卡，安装CPU版本"
+        pip install torch torchvision torchaudio
         return
     fi
 
-    # 只提取纯数字版本号，清除竖线、特殊字符
+    # 清洗CUDA版本
     cuda_version=$(nvidia-smi | grep -i "CUDA Version" | sed 's/[^0-9.]//g')
     echo "✅ 显卡驱动支持最高CUDA版本：${cuda_version}"
-    major_ver=$(echo "${cuda_version}" | cut -d '.' -f 1)
+    echo "当前显卡向下兼容：CUDA‑12.1、CUDA‑11.8、CUDA‑11.7"
+    echo "1) CUDA‑12.1（推荐，适配你的A40显卡）"
+    echo "2) CUDA‑11.8"
+    echo "3) CUDA‑11.7"
+    echo "4) CPU‑版本"
+    read -p "输入序号选择版本：" sel_num
 
-    ver_index=0
-    declare -A cuda_menu
-    menu_str=""
+    case $sel_num in
+        1)
+            echo "▶ 安装适配CUDA‑12.1的GPU版PyTorch"
+            pip install torch torchvision torchaudio
+            ;;
+        2)
+            echo "▶ 安装CUDA‑11.8版本PyTorch"
+            pip install torch==2.4.0+cu118 torchvision==0.19.0+cu118 torchaudio==2.4.0 --index-url https://download.pytorch.org/whl/cu118
+            ;;
+        3)
+            echo "▶ 安装CUDA‑11.7版本PyTorch"
+            pip install torch==1.13.1+cu117 torchvision==0.14.1+cu117 torchaudio==0.13.1 --index-url https://download.pytorch.org/whl/cu117
+            ;;
+        4)
+            echo "▶ 安装CPU版本PyTorch"
+            pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+            ;;
+        *)
+            echo "❌ 无效序号，跳过torch安装"
+            return
+            ;;
+    esac
 
-    # A40驱动13.2，向下兼容官方现存可用版本：cu121、cu118、cu117、cpu
-    if (( major_ver >= 12 ));then
-        ((ver_index++)); cuda_menu[$ver_index]="cu121" ; menu_str+="$ver_index) CUDA‑12.1（最新可用‑推荐）"$'\n'
-        ((ver_index++)); cuda_menu[$ver_index]="cu118" ; menu_str+="$ver_index) CUDA‑11.8"$'\n'
-        ((ver_index++)); cuda_menu[$ver_index]="cu117" ; menu_str+="$ver_index) CUDA‑11.7"$'\n'
-        ((ver_index++)); cuda_menu[$ver_index]="cpu" ; menu_str+="$ver_index) CPU版本"$'\n'
-    elif (( major_ver == 11 ));then
-        minor_ver=$(echo "${cuda_version}" | cut -d '.' -f 2)
-        if (( minor_ver >= 8 ));then
-            ((ver_index++)); cuda_menu[$ver_index]="cu118" ; menu_str+="$ver_index) CUDA‑11.8（最适配‑推荐）"$'\n'
-            ((ver_index++)); cuda_menu[$ver_index]="cu117" ; menu_str+="$ver_index) CUDA‑11.7"$'\n'
-            ((ver_index++)); cuda_menu[$ver_index]="cpu" ; menu_str+="$ver_index) CPU版本"$'\n'
-        else
-            ((ver_index++)); cuda_menu[$ver_index]="cu117" ; menu_str+="$ver_index) CUDA‑11.7（最适配‑推荐）"$'\n'
-            ((ver_index++)); cuda_menu[$ver_index]="cpu" ; menu_str+="$ver_index) CPU版本"$'\n'
-        fi
-    else
-        echo "⚠ 当前显卡驱动CUDA版本较低，仅可选用CPU版PyTorch"
-        pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
-        return
-    fi
-
-    echo -e "\n请选择你需要安装的PyTorch‑CUDA版本："
-    echo "$menu_str"
-    read -p "输入序号：" sel_num
-    target_cuda=${cuda_menu[$sel_num]}
-
-    if [[ -z "$target_cuda" ]];then
-        echo "❌ 无效序号，终止torch安装"
-        return
-    fi
-
-    echo "▶ 开始安装 $target_cuda 版本 PyTorch"
-    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/${target_cuda}
-    echo -e "\n✅ PyTorch 安装完成"
+    echo -e "\n✅ PyTorch 安装命令执行完毕"
 }
 
 read -p "是否打开显卡版本选择面板、安装PyTorch？(y/n)：" torch_flag
@@ -143,7 +124,7 @@ if [[ "${torch_flag}" == "y" || "${torch_flag}" == "Y" ]];then
     install_torch_gpu
 fi
 
-# --------------------------4.加载requirements.txt，过滤torch包再安装------------------------
+# 处理requirements.txt
 echo -e "\n>>>>>>>>>> 开始检测项目依赖文件"
 req_file="./requirements.txt"
 
@@ -153,7 +134,6 @@ if [[ -f "${req_file}" ]];then
     if [[ "${install_flag}" == "y" || "${install_flag}" == "Y" ]];then
         echo "▶ 配置清华pip国内镜像源，加速包下载"
         pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
-        echo "▶ 过滤 torch、pytorch、torchvision、torchaudio 等依赖开始安装"
         grep -ivE 'torch|pytorch' "${req_file}" > /tmp/clean_req.txt
         pip install -r /tmp/clean_req.txt
         rm -f /tmp/clean_req.txt
