@@ -2,13 +2,13 @@
 set +e
 clear
 echo "================================================================================"
-echo "   一站式虚拟环境创建｜自动适配显卡CUDA、可自选国内镜像加速PyTorch"
+echo "   一站式虚拟环境创建｜CUDA自动适配｜PyTorch安装｜单/多卡GPU性能基准测试"
+echo "   指标包含：GFLOPS、吞吐、推理速度、训练速度、显存占用、设备信息"
 echo "================================================================================"
 
 read -p "请输入你的项目虚拟环境名称：" env_name
 [[ -z "${env_name}" ]] && echo "环境名称不能为空，脚本退出" && exit 1
 env_act_status=0
-# 记录当前工作目录，用于生成绝对路径
 base_path=$(pwd)
 
 # 优先加载本地已存在 venv
@@ -51,7 +51,7 @@ else
 fi
 [[ $env_act_status -ne 1 ]] && echo "环境激活失败" && exit 1
 
-# 普通pip包默认清华源
+# pip 默认清华源
 pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
 
 install_torch_gpu(){
@@ -65,13 +65,11 @@ install_torch_gpu(){
         return
     fi
 
-    # 清洗版本，清除特殊符号
     cuda_version=$(nvidia-smi | grep -i "CUDA Version" | sed 's/[^0-9.]//g')
     major_ver=$(echo "$cuda_version" | cut -d '.' -f1)
     minor_ver=$(echo "$cuda_version" | cut -d '.' -f2)
     echo "✅ 显卡驱动最高支持 CUDA‑$cuda_version"
 
-    # 根据硬件最大CUDA，动态生成向下兼容列表
     if (( major_ver >= 12 ));then
         opt_tag+=("cu121") ; opt_name+=("CUDA‑12.1（推荐）")
         opt_tag+=("cu118") ; opt_name+=("CUDA‑11.8")
@@ -81,10 +79,8 @@ install_torch_gpu(){
     elif (( major_ver == 11 ));then
         opt_tag+=("cu117") ; opt_name+=("CUDA‑11.7（推荐）")
     fi
-    # 永远追加CPU选项
     opt_tag+=("cpu") ; opt_name+=("CPU‑版本")
 
-    # 打印动态菜单
     echo ""
     for ((i=0;i<${#opt_tag[@]};i++));do
         num=$((i+1))
@@ -99,7 +95,6 @@ install_torch_gpu(){
     fi
     target_tag=${opt_tag[$index]}
 
-    # 镜像选择
     echo -e "\nPyTorch下载通道选择"
     echo "1 = 上海交大国内镜像（高速）"
     echo "2 = 官方原版源"
@@ -118,13 +113,15 @@ install_torch_gpu(){
 
     echo "执行安装命令：$install_cmd"
     eval "$install_cmd"
+    # 性能测试依赖
+    pip install numpy time psutil
     echo -e "\n✅ PyTorch 安装流程结束"
 }
 
 read -p "是否开始安装 PyTorch？(y/n)：" op
 [[ "${op,,}" == "y" ]] && install_torch_gpu
 
-# 处理 requirements.txt，自动过滤torch相关包
+# 加载requirements依赖
 req_file="./requirements.txt"
 if [[ -f "$req_file" ]];then
     read -p "安装剩余第三方依赖（自动跳过torch系列）？(y/n)" op2
@@ -136,7 +133,7 @@ if [[ -f "$req_file" ]];then
     fi
 fi
 
-# 定义全套 PyTorch‑GPU 校验指令
+# -------------------------- PyTorch GPU 基础校验命令 --------------------------
 CHECK_GPU_BOOL='python -c "import torch; print(torch.cuda.is_available())"'
 CHECK_GPU_NUM='python -c "import torch; print(torch.cuda.device_count())"'
 CHECK_GPU_NAME='python -c "import torch; print([torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())])"'
@@ -154,9 +151,125 @@ print(f\"cuDNN开启: {torch.backends.cudnn.enabled}\")
 print(f\"cuDNN版本: {torch.backends.cudnn.version()}\")
 "'
 
-# 自动执行一次GPU检测
 echo -e "\n>>>>>>>>>> 正在自动执行PyTorch‑GPU自检"
 eval "$CHECK_GPU_ALL"
+
+# -------------------------- GPU综合性能基准测试（单卡/多卡、GFLOPS、速度、显存、吞吐） --------------------------
+gpu_benchmark_test(){
+cat > /tmp/gpu_benchmark.py << 'EOF'
+import torch
+import time
+import psutil
+
+def get_gpu_info():
+    device_count = torch.cuda.device_count()
+    if device_count == 0:
+        print("无可用CUDA显卡，跳过GPU测速")
+        return False
+    for i in range(device_count):
+        print(f"\n---------- 显卡{i}基础信息 ----------")
+        print("显卡名称:", torch.cuda.get_device_name(i))
+        prop = torch.cuda.get_device_properties(i)
+        print("显存总容量(GB):", round(prop.total_memory / (1024**3),3))
+        print("算力:", prop.major,".",prop.minor)
+    return True
+
+def benchmark_single_card(device_id=0,batch=32,warm_up=10,test_loop=50):
+    dev = torch.device(f"cuda:{device_id}")
+    # 模拟图像输入 (batch,channel,H,W)
+    x = torch.randn((batch,3,224,224),dtype=torch.float32,device=dev)
+    model = torch.hub.load('pytorch/vision:v0.18.0','resnet50',pretrained=False).to(dev)
+    model.train()
+
+    # 预热
+    for _ in range(warm_up):
+        out = model(x)
+
+    # 训练测速(前向+反向传播)
+    torch.cuda.synchronize(dev)
+    t0 = time.time()
+    for _ in range(test_loop):
+        out = model(x)
+        loss = out.sum()
+        loss.backward()
+    torch.cuda.synchronize(dev)
+    train_cost = (time.time()-t0)/test_loop
+
+    # 推理测速(eval 关闭梯度)
+    model.eval()
+    with torch.no_grad():
+        torch.cuda.synchronize(dev)
+        t1 = time.time()
+        for _ in range(test_loop):
+            out = model(x)
+        torch.cuda.synchronize(dev)
+        infer_cost = (time.time()-t1)/test_loop
+
+    # GFLOPS 粗略计算 resnet50 浮点运算量 ~4.1GFlop / 单张224图
+    single_sample_flop = 4.1
+    batch_flop = single_sample_flop * batch
+    train_gflops = batch_flop / train_cost
+    infer_gflops = batch_flop / infer_cost
+    train_throughput = batch / train_cost
+    infer_throughput = batch / infer_cost
+
+    # 获取显存占用
+    mem_allocated = torch.cuda.memory_allocated(dev) / (1024**2)
+    mem_reserved = torch.cuda.memory_reserved(dev) / (1024**2)
+
+    print(f"\n========== 显卡 {device_id} 性能指标 ==========")
+    print(f"单轮训练耗时(s):{round(train_cost,5)}")
+    print(f"单轮推理耗时(s):{round(infer_cost,5)}")
+    print(f"训练 GFLOPS:{round(train_gflops,3)}")
+    print(f"推理 GFLOPS:{round(infer_gflops,3)}")
+    print(f"训练吞吐(sample/s):{round(train_throughput,2)}")
+    print(f"推理吞吐(sample/s):{round(infer_throughput,2)}")
+    print(f"已占用显存(MB):{round(mem_allocated,2)}")
+    print(f"缓存显存(MB):{round(mem_reserved,2)}")
+
+def benchmark_multi_gpu():
+    device_num = torch.cuda.device_count()
+    if device_num <=1:
+        return
+    from torch.nn import DataParallel
+    batch = 64
+    model = torch.hub.load('pytorch/vision:v0.18.0','resnet50',pretrained=False).cuda()
+    model = DataParallel(model)
+    x = torch.randn((batch,3,224,224),dtype=torch.float32).cuda()
+    model.train()
+    for _ in range(10):
+        o = model(x)
+    torch.cuda.synchronize()
+    t0 = time.time()
+    loop = 30
+    for _ in range(loop):
+        o = model(x)
+        loss = o.sum()
+        loss.backward()
+    torch.cuda.synchronize()
+    avg_t = (time.time()-t0)/loop
+    throughput = batch / avg_t
+    print(f"\n========== 多卡DataParallel综合训练测试 ==========")
+    print(f"显卡总数:{device_num}")
+    print(f"平均迭代耗时(s):{round(avg_t,5)}")
+    print(f"多卡训练吞吐(sample/s):{round(throughput,2)}")
+
+if __name__=="__main__":
+    if not torch.cuda.is_available():
+        exit()
+    get_gpu_info()
+    gpu_cnt = torch.cuda.device_count()
+    for d in range(gpu_cnt):
+        benchmark_single_card(device_id=d)
+    benchmark_multi_gpu()
+EOF
+    python /tmp/gpu_benchmark.py
+    rm -f /tmp/gpu_benchmark.py
+}
+
+read -p "是否执行GPU综合性能基准测试(单卡GFLOPS、吞吐、速度、多卡测速)？(y/n) " bench_opt
+[[ "${bench_opt,,}" == "y" ]] && gpu_benchmark_test
+
 
 echo -e "\n================================================================================"
 echo "✅ 整套环境搭建完毕｜环境类型：${ENV_TYPE}"
@@ -175,4 +288,7 @@ echo "4. 查看PyTorch内置CUDA版本：${CHECK_TORCH_CUDA}"
 echo "5. 查看cuDNN状态与版本：${CHECK_CUDNN}"
 echo "6. 一键完整GPU信息：${CHECK_GPU_ALL}"
 echo ""
+echo "👉 【GPU性能测试说明】"
+echo "• 测试网络：ResNet50 输入 3*224*224"
+echo "• 输出指标：训练耗时、推理耗时、GFLOPS、每秒样本吞吐、显存占用、显卡算力、多卡并行速度"
 echo "================================================================================"
