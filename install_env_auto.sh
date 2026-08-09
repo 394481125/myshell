@@ -5,15 +5,14 @@
 # 1.输入虚拟环境名称
 # 2.优先检测当前目录同名venv文件夹，存在直接激活
 # 3.未找到环境，手动选择 conda / venv 创建全新虚拟环境
-# 4.读取显卡驱动最高CUDA版本，展示所有向下兼容的Torch‑CUDA版本
-#   带(推荐)标识最优版本，由用户手动选择安装
-# 5.读取requirements.txt，安装依赖时过滤所有torch系列依赖包
+# 4.修复nvidia‑smi字符解析bug，剔除竖线特殊符号
+# 5.根据驱动最大CUDA列出向下兼容Torch版本，最优版本标记(推荐)
+# 6.requirements.txt自动过滤torch家族包，防止版本冲突
 # 使用方式：curl下载至/tmp临时目录运行，执行结束自动清理脚本
 # 注意事项：
 #   1.禁止sudo运行，虚拟环境会出现权限异常
 #   2.conda模式需要提前装好Miniconda / Anaconda
 #   3.venv需要系统安装 python3‑env
-#   4.服务器需要安装NVIDIA显卡驱动，nvidia‑smi才可正常读取CUDA版本
 #===============================================================================
 
 set +e
@@ -83,7 +82,7 @@ if [[ ${env_act_status} -ne 1 ]];then
     exit 1
 fi
 
-# --------------------------3.读取CUDA、生成向下兼容版本列表、用户选择安装Torch------------------------
+# --------------------------3.修复版‑读取CUDA、向下兼容版本选择------------------------
 install_torch_gpu(){
     echo -e "\n>>>>>>>>>> 开始检测本机NVIDIA显卡驱动以及最高支持CUDA版本"
     if ! command -v nvidia-smi &> /dev/null;then
@@ -93,30 +92,32 @@ install_torch_gpu(){
         return
     fi
 
-    cuda_version=$(nvidia-smi | grep -i "cuda version" | awk '{print $NF}')
+    # 修复：只提取纯数字版本号，过滤 | 竖线、空格等特殊字符
+    cuda_version=$(nvidia-smi | grep -i "CUDA Version" | sed 's/[^0-9.]//g')
     echo "✅ 显卡驱动支持最高CUDA版本：${cuda_version}"
     major_ver=$(echo "${cuda_version}" | cut -d '.' -f 1)
-    minor_ver=$(echo "${cuda_version}" | cut -d '.' -f 2)
 
-    # 清空版本数组
     ver_index=0
     declare -A cuda_menu
     menu_str=""
 
-    # 根据驱动上限添加向下兼容的可用版本
+    # 你的机器驱动为13.2，大于等于12，兼容全部现存torch‑cuda版本
     if (( major_ver >= 12 ));then
-        ((ver_index++)); cuda_menu[$ver_index]="cu124" ; menu_str+="$ver_index) CUDA‑12.4（最新版本‑推荐）"$'\n'
+        ((ver_index++)); cuda_menu[$ver_index]="cu124" ; menu_str+="$ver_index) CUDA‑12.4（最新适配‑推荐）"$'\n'
         ((ver_index++)); cuda_menu[$ver_index]="cu121" ; menu_str+="$ver_index) CUDA‑12.1"$'\n'
         ((ver_index++)); cuda_menu[$ver_index]="cu118" ; menu_str+="$ver_index) CUDA‑11.8"$'\n'
         ((ver_index++)); cuda_menu[$ver_index]="cu117" ; menu_str+="$ver_index) CUDA‑11.7"$'\n'
         ((ver_index++)); cuda_menu[$ver_index]="cpu" ; menu_str+="$ver_index) CPU版本"$'\n'
-    elif (( major_ver == 11 && minor_ver >= 8 ));then
-        ((ver_index++)); cuda_menu[$ver_index]="cu118" ; menu_str+="$ver_index) CUDA‑11.8（最适配‑推荐）"$'\n'
-        ((ver_index++)); cuda_menu[$ver_index]="cu117" ; menu_str+="$ver_index) CUDA‑11.7"$'\n'
-        ((ver_index++)); cuda_menu[$ver_index]="cpu" ; menu_str+="$ver_index) CPU版本"$'\n'
     elif (( major_ver == 11 ));then
-        ((ver_index++)); cuda_menu[$ver_index]="cu117" ; menu_str+="$ver_index) CUDA‑11.7（最适配‑推荐）"$'\n'
-        ((ver_index++)); cuda_menu[$ver_index]="cpu" ; menu_str+="$ver_index) CPU版本"$'\n'
+        minor_ver=$(echo "${cuda_version}" | cut -d '.' -f 2)
+        if (( minor_ver >= 8 ));then
+            ((ver_index++)); cuda_menu[$ver_index]="cu118" ; menu_str+="$ver_index) CUDA‑11.8（最适配‑推荐）"$'\n'
+            ((ver_index++)); cuda_menu[$ver_index]="cu117" ; menu_str+="$ver_index) CUDA‑11.7"$'\n'
+            ((ver_index++)); cuda_menu[$ver_index]="cpu" ; menu_str+="$ver_index) CPU版本"$'\n'
+        else
+            ((ver_index++)); cuda_menu[$ver_index]="cu117" ; menu_str+="$ver_index) CUDA‑11.7（最适配‑推荐）"$'\n'
+            ((ver_index++)); cuda_menu[$ver_index]="cpu" ; menu_str+="$ver_index) CPU版本"$'\n'
+        fi
     else
         echo "⚠ 当前显卡驱动CUDA版本较低，仅可选用CPU版PyTorch"
         pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
