@@ -50,6 +50,12 @@ curl -sSL https://raw.githubusercontent.com/394481125/myshell/main/check_core_pr
 curl -sSL https://raw.githubusercontent.com/394481125/myshell/main/check_gpu_all.sh | sudo bash
 ```
 
+### 一键安装torch-gpu还有requirements
+> 适用场景：一键安装环境。
+```bash
+curl -sSL "https://raw.githubusercontent.com/394481125/myshell/main/env_auto_install.sh" -o /tmp/project_env.sh && bash /tmp/project_env.sh && rm -f /tmp/project_env.sh
+```
+
 
 ### 常用 Git 命令
 - **提交代码**：
