@@ -1,12 +1,12 @@
 #!/bin/bash
 #===============================================================================
 # 脚本名称：env_auto_install.sh
-# 完整运行流程
+# 问题修复：cu124源失效，更换官方可用下载地址
 # 1.输入虚拟环境名称
 # 2.优先检测当前目录同名venv文件夹，存在直接激活
 # 3.未找到环境，手动选择 conda / venv 创建全新虚拟环境
-# 4.修复nvidia‑smi字符解析bug，剔除竖线特殊符号
-# 5.根据驱动最大CUDA列出向下兼容Torch版本，最优版本标记(推荐)
+# 4.剔除nvidia‑smi输出的竖线特殊符号，正常读取CUDA版本
+# 5.只保留官方现存可用的Torch‑CUDA版本，最高cu121作为推荐
 # 6.requirements.txt自动过滤torch家族包，防止版本冲突
 # 使用方式：curl下载至/tmp临时目录运行，执行结束自动清理脚本
 # 注意事项：
@@ -82,7 +82,7 @@ if [[ ${env_act_status} -ne 1 ]];then
     exit 1
 fi
 
-# --------------------------3.修复版‑读取CUDA、向下兼容版本选择------------------------
+# --------------------------3.读取CUDA、向下兼容版本选择（修复失效源）------------------------
 install_torch_gpu(){
     echo -e "\n>>>>>>>>>> 开始检测本机NVIDIA显卡驱动以及最高支持CUDA版本"
     if ! command -v nvidia-smi &> /dev/null;then
@@ -92,7 +92,7 @@ install_torch_gpu(){
         return
     fi
 
-    # 修复：只提取纯数字版本号，过滤 | 竖线、空格等特殊字符
+    # 只提取纯数字版本号，清除竖线、特殊字符
     cuda_version=$(nvidia-smi | grep -i "CUDA Version" | sed 's/[^0-9.]//g')
     echo "✅ 显卡驱动支持最高CUDA版本：${cuda_version}"
     major_ver=$(echo "${cuda_version}" | cut -d '.' -f 1)
@@ -101,10 +101,9 @@ install_torch_gpu(){
     declare -A cuda_menu
     menu_str=""
 
-    # 你的机器驱动为13.2，大于等于12，兼容全部现存torch‑cuda版本
+    # A40驱动13.2，向下兼容官方现存可用版本：cu121、cu118、cu117、cpu
     if (( major_ver >= 12 ));then
-        ((ver_index++)); cuda_menu[$ver_index]="cu124" ; menu_str+="$ver_index) CUDA‑12.4（最新适配‑推荐）"$'\n'
-        ((ver_index++)); cuda_menu[$ver_index]="cu121" ; menu_str+="$ver_index) CUDA‑12.1"$'\n'
+        ((ver_index++)); cuda_menu[$ver_index]="cu121" ; menu_str+="$ver_index) CUDA‑12.1（最新可用‑推荐）"$'\n'
         ((ver_index++)); cuda_menu[$ver_index]="cu118" ; menu_str+="$ver_index) CUDA‑11.8"$'\n'
         ((ver_index++)); cuda_menu[$ver_index]="cu117" ; menu_str+="$ver_index) CUDA‑11.7"$'\n'
         ((ver_index++)); cuda_menu[$ver_index]="cpu" ; menu_str+="$ver_index) CPU版本"$'\n'
