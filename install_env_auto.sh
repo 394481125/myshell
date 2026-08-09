@@ -54,6 +54,10 @@ fi
 # pip 默认清华源
 pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
 
+# 【修复】提前安装性能测试所需依赖，防止跳过torch安装缺少psutil
+echo -e "\n>>> 预安装GPU测速依赖 numpy psutil"
+pip install -q numpy psutil
+
 install_torch_gpu(){
     declare -a opt_tag=()
     declare -a opt_name=()
@@ -113,8 +117,6 @@ install_torch_gpu(){
 
     echo "执行安装命令：$install_cmd"
     eval "$install_cmd"
-    # 性能测试依赖
-    pip install numpy time psutil
     echo -e "\n✅ PyTorch 安装流程结束"
 }
 
@@ -159,7 +161,11 @@ gpu_benchmark_test(){
 cat > /tmp/gpu_benchmark.py << 'EOF'
 import torch
 import time
-import psutil
+# psutil改为动态导入，缺失不会直接崩溃
+try:
+    import psutil
+except ImportError:
+    psutil = None
 
 def get_gpu_info():
     device_count = torch.cuda.device_count()
@@ -176,7 +182,6 @@ def get_gpu_info():
 
 def benchmark_single_card(device_id=0,batch=32,warm_up=10,test_loop=50):
     dev = torch.device(f"cuda:{device_id}")
-    # 模拟图像输入 (batch,channel,H,W)
     x = torch.randn((batch,3,224,224),dtype=torch.float32,device=dev)
     model = torch.hub.load('pytorch/vision:v0.18.0','resnet50',pretrained=False).to(dev)
     model.train()
@@ -195,7 +200,7 @@ def benchmark_single_card(device_id=0,batch=32,warm_up=10,test_loop=50):
     torch.cuda.synchronize(dev)
     train_cost = (time.time()-t0)/test_loop
 
-    # 推理测速(eval 关闭梯度)
+    # 推理测速
     model.eval()
     with torch.no_grad():
         torch.cuda.synchronize(dev)
@@ -205,7 +210,7 @@ def benchmark_single_card(device_id=0,batch=32,warm_up=10,test_loop=50):
         torch.cuda.synchronize(dev)
         infer_cost = (time.time()-t1)/test_loop
 
-    # GFLOPS 粗略计算 resnet50 浮点运算量 ~4.1GFlop / 单张224图
+    # GFLOPS resnet50 单张图约4.1GFlop
     single_sample_flop = 4.1
     batch_flop = single_sample_flop * batch
     train_gflops = batch_flop / train_cost
@@ -213,7 +218,6 @@ def benchmark_single_card(device_id=0,batch=32,warm_up=10,test_loop=50):
     train_throughput = batch / train_cost
     infer_throughput = batch / infer_cost
 
-    # 获取显存占用
     mem_allocated = torch.cuda.memory_allocated(dev) / (1024**2)
     mem_reserved = torch.cuda.memory_reserved(dev) / (1024**2)
 
