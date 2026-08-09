@@ -8,12 +8,17 @@ echo "==========================================================================
 read -p "请输入你的项目虚拟环境名称：" env_name
 [[ -z "${env_name}" ]] && echo "环境名称不能为空，脚本退出" && exit 1
 env_act_status=0
+# 记录当前工作目录，用于生成绝对路径
+base_path=$(pwd)
 
 # 优先加载本地已存在 venv
 if [[ -d "./${env_name}" ]];then
     echo -e "\n✅ 检测到已有venv环境，正在激活 ${env_name}"
     source ./${env_name}/bin/activate
     env_act_status=1
+    ENV_TYPE="venv"
+    ACTIVATE_CMD="source ${base_path}/${env_name}/bin/activate"
+    EXIT_CMD="deactivate"
 else
     echo -e "\n⚠ 本地不存在该venv文件夹，请选择环境类型"
     echo "1 = Conda 虚拟环境"
@@ -31,10 +36,16 @@ else
         eval "$(conda shell.bash hook)"
         conda activate "${env_name}"
         env_act_status=1
+        ENV_TYPE="conda"
+        ACTIVATE_CMD="conda activate ${env_name}"
+        EXIT_CMD="conda deactivate"
     elif [[ "$sel_type" == "2" ]];then
         python3 -m venv "${env_name}"
         source ./${env_name}/bin/activate
         env_act_status=1
+        ENV_TYPE="venv"
+        ACTIVATE_CMD="source ${base_path}/${env_name}/bin/activate"
+        EXIT_CMD="deactivate"
         echo "✅ venv环境创建并激活成功"
     fi
 fi
@@ -125,8 +136,43 @@ if [[ -f "$req_file" ]];then
     fi
 fi
 
+# 定义全套 PyTorch‑GPU 校验指令
+CHECK_GPU_BOOL='python -c "import torch; print(torch.cuda.is_available())"'
+CHECK_GPU_NUM='python -c "import torch; print(torch.cuda.device_count())"'
+CHECK_GPU_NAME='python -c "import torch; print([torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())])"'
+CHECK_TORCH_CUDA='python -c "import torch; print(f\"PyTorch CUDA版本:{torch.version.cuda}\")"'
+CHECK_CUDNN='python -c "import torch; print(f\"cuDNN可用:{torch.backends.cudnn.enabled}, cuDNN版本:{torch.backends.cudnn.version()}\")"'
+CHECK_GPU_ALL='python -c "
+import torch
+print(\"===== PyTorch GPU 完整信息 =====\")
+print(f\"CUDA可用: {torch.cuda.is_available()}\")
+print(f\"显卡数量: {torch.cuda.device_count()}\")
+for idx in range(torch.cuda.device_count()):
+    print(f\"显卡{idx}: {torch.cuda.get_device_name(idx)}\")
+print(f\"Torch绑定CUDA版本: {torch.version.cuda}\")
+print(f\"cuDNN开启: {torch.backends.cudnn.enabled}\")
+print(f\"cuDNN版本: {torch.backends.cudnn.version()}\")
+"'
+
+# 自动执行一次GPU检测
+echo -e "\n>>>>>>>>>> 正在自动执行PyTorch‑GPU自检"
+eval "$CHECK_GPU_ALL"
+
 echo -e "\n================================================================================"
-echo "✅ 整套环境搭建完毕"
-echo "退出虚拟环境命令：deactivate"
-echo "校验GPU：python -c 'import torch;print(torch.cuda.is_available())'"
+echo "✅ 整套环境搭建完毕｜环境类型：${ENV_TYPE}"
+echo ""
+echo "👉 【激活环境‑绝对路径命令】"
+echo "${ACTIVATE_CMD}"
+echo ""
+echo "👉 【退出虚拟环境命令】"
+echo "${EXIT_CMD}"
+echo ""
+echo "👉 【常用PyTorch‑GPU校验命令合集】"
+echo "1. 判断GPU是否可用：${CHECK_GPU_BOOL}"
+echo "2. 查看显卡数量：${CHECK_GPU_NUM}"
+echo "3. 读取显卡名称：${CHECK_GPU_NAME}"
+echo "4. 查看PyTorch内置CUDA版本：${CHECK_TORCH_CUDA}"
+echo "5. 查看cuDNN状态与版本：${CHECK_CUDNN}"
+echo "6. 一键完整GPU信息：${CHECK_GPU_ALL}"
+echo ""
 echo "================================================================================"
