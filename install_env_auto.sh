@@ -1,6 +1,8 @@
 #!/bin/bash
 set +e
 clear
+# 清理旧torch‑hub缓存，彻底规避nms算子冲突报错
+rm -rf ~/.cache/torch/hub
 echo "================================================================================"
 echo "   一站式虚拟环境创建｜CUDA自动适配｜PyTorch安装｜timm‑ResNet50 GPU基准测试"
 echo "   指标：GFLOPS、吞吐、推理速度、训练速度、显存占用、设备信息、多卡测速"
