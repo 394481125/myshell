@@ -61,6 +61,7 @@ curl -sSL "https://raw.githubusercontent.com/394481125/myshell/main/install_env_
 
 ```bash
 curl -sSL "https://raw.githubusercontent.com/394481125/myshell/main/install_changedetection.sh" -o /tmp/install_changedetection.sh && sudo bash /tmp/install_changedetection.sh && rm -f /tmp/install_changedetection.sh
+```
 
 ### 常用 Git 命令
 - **提交代码**：
